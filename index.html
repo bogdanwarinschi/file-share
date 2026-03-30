@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>File Share</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f0f0f; color: #e0e0e0; min-height: 100vh; }
+  .container { max-width: 800px; margin: 0 auto; padding: 24px; }
+  h1 { text-align: center; margin: 32px 0 8px; font-size: 1.8rem; color: #fff; }
+  .subtitle { text-align: center; color: #888; margin-bottom: 32px; font-size: 0.9rem; }
+
+  /* Login */
+  #login-screen { display: flex; flex-direction: column; align-items: center; gap: 16px; margin-top: 80px; }
+  #login-screen input { padding: 12px 16px; border-radius: 8px; border: 1px solid #333; background: #1a1a1a; color: #fff; font-size: 1rem; width: 260px; text-align: center; }
+  #login-screen button { padding: 12px 32px; border-radius: 8px; border: none; background: #2563eb; color: #fff; font-size: 1rem; cursor: pointer; }
+  #login-screen button:hover { background: #1d4ed8; }
+
+  /* Main */
+  #main-screen { display: none; }
+
+  /* Upload area */
+  .upload-area { border: 2px dashed #333; border-radius: 12px; padding: 40px; text-align: center; cursor: pointer; transition: border-color 0.2s, background 0.2s; margin-bottom: 24px; }
+  .upload-area:hover, .upload-area.dragover { border-color: #2563eb; background: #1a1a2e; }
+  .upload-area p { color: #888; }
+  .upload-area .big { font-size: 1.1rem; color: #ccc; margin-bottom: 4px; }
+  #file-input { display: none; }
+
+  /* Progress */
+  .progress-bar { height: 4px; background: #1a1a1a; border-radius: 2px; margin-bottom: 24px; display: none; }
+  .progress-bar .fill { height: 100%; background: #2563eb; border-radius: 2px; transition: width 0.2s; width: 0%; }
+
+  /* File list */
+  .file-list { display: flex; flex-direction: column; gap: 8px; }
+  .file-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #1a1a1a; border-radius: 8px; }
+  .file-item .icon { font-size: 1.5rem; flex-shrink: 0; }
+  .file-item .info { flex: 1; min-width: 0; }
+  .file-item .name { color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.95rem; }
+  .file-item .meta { color: #666; font-size: 0.8rem; margin-top: 2px; }
+  .file-item button { padding: 6px 14px; border-radius: 6px; border: none; cursor: pointer; font-size: 0.85rem; }
+  .btn-download { background: #2563eb; color: #fff; }
+  .btn-download:hover { background: #1d4ed8; }
+  .btn-delete { background: #333; color: #ccc; }
+  .btn-delete:hover { background: #dc2626; color: #fff; }
+
+  .empty { text-align: center; color: #555; padding: 40px; }
+  .status { text-align: center; color: #2563eb; margin-bottom: 16px; min-height: 20px; }
+
+  /* Preview modal */
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 100; justify-content: center; align-items: center; }
+  .modal-overlay.active { display: flex; }
+  .modal-content { max-width: 90vw; max-height: 90vh; }
+  .modal-content img, .modal-content video { max-width: 90vw; max-height: 90vh; border-radius: 8px; }
+  .modal-close { position: fixed; top: 16px; right: 24px; font-size: 2rem; color: #fff; cursor: pointer; z-index: 101; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>File Share</h1>
+  <p class="subtitle">Upload and download photos & videos</p>
+
+  <div id="login-screen">
+    <input type="password" id="pw-input" placeholder="Enter password" autofocus>
+    <button onclick="login()">Enter</button>
+  </div>
+
+  <div id="main-screen">
+    <div class="upload-area" id="drop-zone" onclick="document.getElementById('file-input').click()">
+      <p class="big">Drop files here or click to upload</p>
+      <p>Photos and videos up to 500 MB each</p>
+    </div>
+    <input type="file" id="file-input" multiple accept="image/*,video/*">
+
+    <div class="progress-bar" id="progress-bar"><div class="fill" id="progress-fill"></div></div>
+    <div class="status" id="status"></div>
+    <div class="file-list" id="file-list"></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="modal" onclick="closeModal()">
+  <span class="modal-close" onclick="closeModal()">&times;</span>
+  <div class="modal-content" id="modal-content" onclick="event.stopPropagation()"></div>
+</div>
+
+<script>
+let pw = "";
+
+document.getElementById("pw-input").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") login();
+});
+
+function login() {
+  pw = document.getElementById("pw-input").value;
+  fetch("/api/files?pw=" + encodeURIComponent(pw))
+    .then((r) => { if (!r.ok) throw new Error(); return r.json(); })
+    .then((files) => {
+      document.getElementById("login-screen").style.display = "none";
+      document.getElementById("main-screen").style.display = "block";
+      renderFiles(files);
+    })
+    .catch(() => alert("Wrong password"));
+}
+
+// Drag and drop
+const dropZone = document.getElementById("drop-zone");
+dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.classList.add("dragover"); });
+dropZone.addEventListener("dragleave", () => dropZone.classList.remove("dragover"));
+dropZone.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dropZone.classList.remove("dragover");
+  uploadFiles(e.dataTransfer.files);
+});
+
+document.getElementById("file-input").addEventListener("change", (e) => {
+  uploadFiles(e.target.files);
+  e.target.value = "";
+});
+
+function uploadFiles(fileList) {
+  if (!fileList.length) return;
+  const form = new FormData();
+  for (const f of fileList) form.append("files", f);
+
+  const bar = document.getElementById("progress-bar");
+  const fill = document.getElementById("progress-fill");
+  bar.style.display = "block";
+  fill.style.width = "0%";
+  document.getElementById("status").textContent = "Uploading...";
+
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", "/api/upload?pw=" + encodeURIComponent(pw));
+  xhr.upload.onprogress = (e) => {
+    if (e.lengthComputable) fill.style.width = Math.round((e.loaded / e.total) * 100) + "%";
+  };
+  xhr.onload = () => {
+    bar.style.display = "none";
+    if (xhr.status === 200) {
+      document.getElementById("status").textContent = "Upload complete!";
+      setTimeout(() => document.getElementById("status").textContent = "", 2000);
+      loadFiles();
+    } else {
+      document.getElementById("status").textContent = "Upload failed";
+    }
+  };
+  xhr.onerror = () => {
+    bar.style.display = "none";
+    document.getElementById("status").textContent = "Upload failed";
+  };
+  xhr.send(form);
+}
+
+function loadFiles() {
+  fetch("/api/files?pw=" + encodeURIComponent(pw))
+    .then((r) => r.json())
+    .then(renderFiles);
+}
+
+function renderFiles(files) {
+  const list = document.getElementById("file-list");
+  if (!files.length) { list.innerHTML = '<div class="empty">No files yet</div>'; return; }
+  list.innerHTML = files.map((f) => {
+    const ext = f.name.split(".").pop().toLowerCase();
+    const isImage = ["jpg","jpeg","png","gif","webp","bmp","svg","heic"].includes(ext);
+    const isVideo = ["mp4","mov","webm","avi","mkv","m4v"].includes(ext);
+    const icon = isVideo ? "&#127909;" : isImage ? "&#128247;" : "&#128196;";
+    const size = formatSize(f.size);
+    const date = new Date(f.uploaded).toLocaleDateString();
+    const previewBtn = (isImage || isVideo)
+      ? `<button class="btn-download" onclick="preview('${f.name}', ${isVideo})" style="background:#444">Preview</button>`
+      : "";
+    return `<div class="file-item">
+      <span class="icon">${icon}</span>
+      <div class="info"><div class="name" title="${f.name}">${f.name}</div><div class="meta">${size} &middot; ${date}</div></div>
+      ${previewBtn}
+      <button class="btn-download" onclick="download('${f.name}')">Download</button>
+      <button class="btn-delete" onclick="del('${f.name}')">Delete</button>
+    </div>`;
+  }).join("");
+}
+
+function formatSize(bytes) {
+  if (bytes < 1024) return bytes + " B";
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + " MB";
+  return (bytes / (1024 * 1024 * 1024)).toFixed(1) + " GB";
+}
+
+function download(name) {
+  window.open("/api/download/" + encodeURIComponent(name) + "?pw=" + encodeURIComponent(pw));
+}
+
+function del(name) {
+  if (!confirm("Delete " + name + "?")) return;
+  fetch("/api/files/" + encodeURIComponent(name) + "?pw=" + encodeURIComponent(pw), { method: "DELETE" })
+    .then(() => loadFiles());
+}
+
+function preview(name, isVideo) {
+  const url = "/api/download/" + encodeURIComponent(name) + "?pw=" + encodeURIComponent(pw);
+  const mc = document.getElementById("modal-content");
+  mc.innerHTML = isVideo
+    ? `<video src="${url}" controls autoplay style="max-width:90vw;max-height:90vh;border-radius:8px"></video>`
+    : `<img src="${url}" style="max-width:90vw;max-height:90vh;border-radius:8px">`;
+  document.getElementById("modal").classList.add("active");
+}
+
+function closeModal() {
+  document.getElementById("modal").classList.remove("active");
+  document.getElementById("modal-content").innerHTML = "";
+}
+
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
+</script>
+</body>
+</html>

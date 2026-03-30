@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: file-share
+    runtime: node
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: PASSWORD
+        value: password
+    disk:
+      name: uploads
+      mountPath: /opt/render/project/src/uploads
+      sizeGB: 1
