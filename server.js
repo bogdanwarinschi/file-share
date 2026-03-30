@@ -1,5 +1,6 @@
 require("dotenv").config();
 const express = require("express");
+const multer = require("multer");
 const path = require("path");
 const { createClient } = require("@supabase/supabase-js");
 
@@ -12,6 +13,11 @@ const supabase = createClient(
   process.env.SUPABASE_URL,
   process.env.SUPABASE_SERVICE_KEY
 );
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 500 * 1024 * 1024 },
+});
 
 function checkPassword(req, res, next) {
   const pw = req.query.pw || req.body?.pw || req.headers["x-password"];
@@ -28,7 +34,7 @@ app.get("/", (_req, res) => {
   res.sendFile(path.join(__dirname, "index.html"));
 });
 
-// List files — returns name, size, uploaded, and a signed URL for each
+// List files — returns signed URLs for direct browser access
 app.get("/api/files", checkPassword, async (_req, res) => {
   const { data, error } = await supabase.storage.from(BUCKET).list("", {
     limit: 1000,
@@ -40,7 +46,6 @@ app.get("/api/files", checkPassword, async (_req, res) => {
     .filter((f) => f.name !== ".emptyFolderPlaceholder")
     .map((f) => f.name);
 
-  // Create signed URLs in bulk (valid 1 hour)
   let urls = {};
   if (names.length) {
     const { data: signed, error: urlErr } = await supabase.storage
@@ -64,22 +69,25 @@ app.get("/api/files", checkPassword, async (_req, res) => {
   res.json(files);
 });
 
-// Get a signed upload URL — browser uploads directly to Supabase
-app.post("/api/upload-url", checkPassword, async (req, res) => {
-  const { filename } = req.body;
-  if (!filename) return res.status(400).json({ error: "filename required" });
+// Upload — goes through server to avoid CORS issues
+app.post("/api/upload", checkPassword, upload.array("files", 20), async (req, res) => {
+  const uploaded = [];
+  for (const file of req.files) {
+    const unique = Date.now() + "-" + Math.round(Math.random() * 1e6);
+    const ext = path.extname(file.originalname);
+    const base = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_-]/g, "_");
+    const filename = `${base}-${unique}${ext}`;
 
-  const ext = path.extname(filename);
-  const base = path.basename(filename, ext).replace(/[^a-zA-Z0-9_-]/g, "_");
-  const unique = Date.now() + "-" + Math.round(Math.random() * 1e6);
-  const storageName = `${base}-${unique}${ext}`;
-
-  const { data, error } = await supabase.storage
-    .from(BUCKET)
-    .createSignedUploadUrl(storageName);
-
-  if (error) return res.status(500).json({ error: error.message });
-  res.json({ signedUrl: data.signedUrl, token: data.token, path: storageName });
+    const { error } = await supabase.storage
+      .from(BUCKET)
+      .upload(filename, file.buffer, {
+        contentType: file.mimetype,
+        upsert: false,
+      });
+    if (error) return res.status(500).json({ error: error.message });
+    uploaded.push(filename);
+  }
+  res.json({ uploaded });
 });
 
 // Delete
