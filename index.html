@@ -7,7 +7,7 @@
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0f0f0f; color: #e0e0e0; min-height: 100vh; }
-  .container { max-width: 800px; margin: 0 auto; padding: 24px; }
+  .container { max-width: 900px; margin: 0 auto; padding: 24px; }
   h1 { text-align: center; margin: 32px 0 8px; font-size: 1.8rem; color: #fff; }
   .subtitle { text-align: center; color: #888; margin-bottom: 32px; font-size: 0.9rem; }
 
@@ -31,10 +31,35 @@
   .progress-bar { height: 4px; background: #1a1a1a; border-radius: 2px; margin-bottom: 24px; display: none; }
   .progress-bar .fill { height: 100%; background: #2563eb; border-radius: 2px; transition: width 0.2s; width: 0%; }
 
-  /* File list */
-  .file-list { display: flex; flex-direction: column; gap: 8px; }
+  .status { text-align: center; color: #2563eb; margin-bottom: 16px; min-height: 20px; }
+  .empty { text-align: center; color: #555; padding: 40px; }
+
+  /* Gallery grid */
+  .gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; }
+  @media (max-width: 500px) { .gallery { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; } }
+
+  .gallery-item { position: relative; border-radius: 10px; overflow: hidden; background: #1a1a1a; cursor: pointer; aspect-ratio: 1; }
+  .gallery-item:hover { outline: 2px solid #2563eb; }
+  .gallery-item img, .gallery-item video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .gallery-item .play-badge { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 48px; height: 48px; background: rgba(0,0,0,0.6); border-radius: 50%; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+  .gallery-item .play-badge::after { content: ""; border-style: solid; border-width: 10px 0 10px 18px; border-color: transparent transparent transparent #fff; margin-left: 3px; }
+  .gallery-item .overlay { position: absolute; bottom: 0; left: 0; right: 0; padding: 6px 8px; background: linear-gradient(transparent, rgba(0,0,0,0.8)); display: flex; align-items: center; justify-content: space-between; opacity: 0; transition: opacity 0.2s; }
+  .gallery-item:hover .overlay { opacity: 1; }
+  .gallery-item .overlay .fname { font-size: 0.7rem; color: #ccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1; margin-right: 6px; }
+  .gallery-item .overlay .fsize { font-size: 0.65rem; color: #888; white-space: nowrap; }
+
+  /* Bottom actions row (delete) */
+  .gallery-item .actions { position: absolute; top: 6px; right: 6px; display: flex; gap: 4px; opacity: 0; transition: opacity 0.2s; }
+  .gallery-item:hover .actions { opacity: 1; }
+  .gallery-item .actions button { width: 28px; height: 28px; border-radius: 50%; border: none; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.8rem; }
+  .btn-del { background: rgba(0,0,0,0.6); color: #f87171; }
+  .btn-del:hover { background: #dc2626; color: #fff; }
+  .btn-dl { background: rgba(0,0,0,0.6); color: #60a5fa; }
+  .btn-dl:hover { background: #2563eb; color: #fff; }
+
+  /* Non-media files */
+  .file-list { display: flex; flex-direction: column; gap: 8px; margin-top: 16px; }
   .file-item { display: flex; align-items: center; gap: 12px; padding: 12px 16px; background: #1a1a1a; border-radius: 8px; }
-  .file-item .icon { font-size: 1.5rem; flex-shrink: 0; }
   .file-item .info { flex: 1; min-width: 0; }
   .file-item .name { color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 0.95rem; }
   .file-item .meta { color: #666; font-size: 0.8rem; margin-top: 2px; }
@@ -44,15 +69,14 @@
   .btn-delete { background: #333; color: #ccc; }
   .btn-delete:hover { background: #dc2626; color: #fff; }
 
-  .empty { text-align: center; color: #555; padding: 40px; }
-  .status { text-align: center; color: #2563eb; margin-bottom: 16px; min-height: 20px; }
-
   /* Preview modal */
-  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.85); z-index: 100; justify-content: center; align-items: center; }
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.92); z-index: 100; flex-direction: column; align-items: center; justify-content: center; }
   .modal-overlay.active { display: flex; }
-  .modal-content { max-width: 90vw; max-height: 90vh; }
-  .modal-content img, .modal-content video { max-width: 90vw; max-height: 90vh; border-radius: 8px; }
+  .modal-content { max-width: 92vw; max-height: 80vh; }
+  .modal-content img, .modal-content video { max-width: 92vw; max-height: 80vh; border-radius: 8px; }
   .modal-close { position: fixed; top: 16px; right: 24px; font-size: 2rem; color: #fff; cursor: pointer; z-index: 101; }
+  .modal-actions { display: flex; gap: 12px; margin-top: 16px; }
+  .modal-actions button { padding: 10px 24px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.95rem; }
 </style>
 </head>
 <body>
@@ -74,6 +98,7 @@
 
     <div class="progress-bar" id="progress-bar"><div class="fill" id="progress-fill"></div></div>
     <div class="status" id="status"></div>
+    <div class="gallery" id="gallery"></div>
     <div class="file-list" id="file-list"></div>
   </div>
 </div>
@@ -81,10 +106,21 @@
 <div class="modal-overlay" id="modal" onclick="closeModal()">
   <span class="modal-close" onclick="closeModal()">&times;</span>
   <div class="modal-content" id="modal-content" onclick="event.stopPropagation()"></div>
+  <div class="modal-actions" id="modal-actions" onclick="event.stopPropagation()"></div>
 </div>
 
 <script>
 let pw = "";
+const IMAGE_EXTS = ["jpg","jpeg","png","gif","webp","bmp","svg","heic"];
+const VIDEO_EXTS = ["mp4","mov","webm","avi","mkv","m4v"];
+
+function fileUrl(name) {
+  return "/api/download/" + encodeURIComponent(name) + "?pw=" + encodeURIComponent(pw);
+}
+
+function extOf(name) { return name.split(".").pop().toLowerCase(); }
+function isImage(name) { return IMAGE_EXTS.includes(extOf(name)); }
+function isVideo(name) { return VIDEO_EXTS.includes(extOf(name)); }
 
 document.getElementById("pw-input").addEventListener("keydown", (e) => {
   if (e.key === "Enter") login();
@@ -157,27 +193,55 @@ function loadFiles() {
 }
 
 function renderFiles(files) {
+  const gallery = document.getElementById("gallery");
   const list = document.getElementById("file-list");
-  if (!files.length) { list.innerHTML = '<div class="empty">No files yet</div>'; return; }
-  list.innerHTML = files.map((f) => {
-    const ext = f.name.split(".").pop().toLowerCase();
-    const isImage = ["jpg","jpeg","png","gif","webp","bmp","svg","heic"].includes(ext);
-    const isVideo = ["mp4","mov","webm","avi","mkv","m4v"].includes(ext);
-    const icon = isVideo ? "&#127909;" : isImage ? "&#128247;" : "&#128196;";
-    const size = formatSize(f.size);
-    const date = new Date(f.uploaded).toLocaleDateString();
-    const previewBtn = (isImage || isVideo)
-      ? `<button class="btn-download" onclick="preview('${f.name}', ${isVideo})" style="background:#444">Preview</button>`
-      : "";
-    return `<div class="file-item">
-      <span class="icon">${icon}</span>
-      <div class="info"><div class="name" title="${f.name}">${f.name}</div><div class="meta">${size} &middot; ${date}</div></div>
-      ${previewBtn}
-      <button class="btn-download" onclick="download('${f.name}')">Download</button>
-      <button class="btn-delete" onclick="del('${f.name}')">Delete</button>
+
+  const media = files.filter((f) => isImage(f.name) || isVideo(f.name));
+  const other = files.filter((f) => !isImage(f.name) && !isVideo(f.name));
+
+  if (!media.length && !other.length) {
+    gallery.innerHTML = "";
+    list.innerHTML = '<div class="empty">No files yet</div>';
+    return;
+  }
+
+  // Render gallery grid
+  gallery.innerHTML = media.map((f) => {
+    const url = fileUrl(f.name);
+    const vid = isVideo(f.name);
+    const thumb = vid
+      ? `<video src="${url}" muted preload="metadata"></video><div class="play-badge"></div>`
+      : `<img src="${url}" loading="lazy" alt="">`;
+    return `<div class="gallery-item" onclick="openPreview('${esc(f.name)}')">
+      ${thumb}
+      <div class="actions">
+        <button class="btn-dl" onclick="event.stopPropagation(); download('${esc(f.name)}')" title="Download">&#8595;</button>
+        <button class="btn-del" onclick="event.stopPropagation(); del('${esc(f.name)}')" title="Delete">&#10005;</button>
+      </div>
+      <div class="overlay">
+        <span class="fname">${f.name}</span>
+        <span class="fsize">${formatSize(f.size)}</span>
+      </div>
     </div>`;
   }).join("");
+
+  // Render non-media files
+  if (other.length) {
+    list.innerHTML = other.map((f) => {
+      const size = formatSize(f.size);
+      const date = new Date(f.uploaded).toLocaleDateString();
+      return `<div class="file-item">
+        <div class="info"><div class="name" title="${f.name}">${f.name}</div><div class="meta">${size} &middot; ${date}</div></div>
+        <button class="btn-download" onclick="download('${esc(f.name)}')">Download</button>
+        <button class="btn-delete" onclick="del('${esc(f.name)}')">Delete</button>
+      </div>`;
+    }).join("");
+  } else {
+    list.innerHTML = "";
+  }
 }
+
+function esc(s) { return s.replace(/'/g, "\\'").replace(/"/g, "&quot;"); }
 
 function formatSize(bytes) {
   if (bytes < 1024) return bytes + " B";
@@ -187,27 +251,38 @@ function formatSize(bytes) {
 }
 
 function download(name) {
-  window.open("/api/download/" + encodeURIComponent(name) + "?pw=" + encodeURIComponent(pw));
+  const a = document.createElement("a");
+  a.href = fileUrl(name);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 function del(name) {
   if (!confirm("Delete " + name + "?")) return;
   fetch("/api/files/" + encodeURIComponent(name) + "?pw=" + encodeURIComponent(pw), { method: "DELETE" })
-    .then(() => loadFiles());
+    .then(() => { closeModal(); loadFiles(); });
 }
 
-function preview(name, isVideo) {
-  const url = "/api/download/" + encodeURIComponent(name) + "?pw=" + encodeURIComponent(pw);
+function openPreview(name) {
+  const url = fileUrl(name);
   const mc = document.getElementById("modal-content");
-  mc.innerHTML = isVideo
-    ? `<video src="${url}" controls autoplay style="max-width:90vw;max-height:90vh;border-radius:8px"></video>`
-    : `<img src="${url}" style="max-width:90vw;max-height:90vh;border-radius:8px">`;
+  const ma = document.getElementById("modal-actions");
+  const vid = isVideo(name);
+  mc.innerHTML = vid
+    ? `<video src="${url}" controls autoplay playsinline style="max-width:92vw;max-height:80vh;border-radius:8px"></video>`
+    : `<img src="${url}" style="max-width:92vw;max-height:80vh;border-radius:8px">`;
+  ma.innerHTML = `
+    <button class="btn-download" onclick="download('${esc(name)}')">Download</button>
+    <button class="btn-delete" onclick="del('${esc(name)}')">Delete</button>`;
   document.getElementById("modal").classList.add("active");
 }
 
 function closeModal() {
   document.getElementById("modal").classList.remove("active");
   document.getElementById("modal-content").innerHTML = "";
+  document.getElementById("modal-actions").innerHTML = "";
 }
 
 document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeModal(); });
